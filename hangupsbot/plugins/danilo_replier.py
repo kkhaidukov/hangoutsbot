@@ -7,6 +7,7 @@ import nltk
 MESSAGES_FILE = '%s/danilo_messages.txt' % os.path.dirname(os.path.realpath(__file__))
 SENTENCE_LENGTH_LIMIT = 20
 ALPHABET = 'йцукенгшщзххъёфывапролджэячсмитьбю'
+LINE_START = '~'
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class Replier(object):
     def __init__(self):
         self.danilo_messages = {}
         self.trigrams_dict = {}
+        self.initials = []
 
     def clean_word(self, word):
         return ''.join(ch for ch in word if ch.isalnum() or ch == u'-')
@@ -31,14 +33,20 @@ class Replier(object):
 
     def init_ngrams(self):
         logger.info("INIT_NGRAMS")
+        raw = ''
         with open(MESSAGES_FILE) as f:
-            raw = f.read()
+            for line in f.readlines():
+                raw += '%s %s\n' % (LINE_START, line)
 
         tokens = nltk.word_tokenize(raw)
         trigrams = nltk.trigrams(tokens)
         for tr in trigrams:
             self.trigrams_dict.setdefault((tr[0], tr[1]), []).append(tr[2])
         logger.info('len(self.trigrams_dict.keys()) = %s' % len(self.trigrams_dict.keys()))
+        for k in self.trigrams_dict.keys():
+            if k[0] == LINE_START:
+                self.initials.append(k)
+        logger.info('len(self.initials) = %s' % len(self.initials))
 
     def _has_image_link(self, message):
         if 'http' not in message:
@@ -75,7 +83,7 @@ class Replier(object):
         if initial:
             sentence = [w.strip().lower() for w in initial.split()]
         else:
-            sentence = list(random.choice(list(self.trigrams_dict.keys())))
+            sentence = list(random.choice(self.initials))
         i = 0
         while True:
             one, two = sentence[-2:]
@@ -96,14 +104,16 @@ class Replier(object):
         sentence_string = ''
         for w in sentence:
             w_ = w.strip().lower()
-            if len(w_) == 1 and w_ not in ALPHABET:
+            if w_ == LINE_START:
+                if not sentence_string:
+                    pass
+                else:
+                    sentence_string += '.'
+            elif w_ == '-':
+                sentence_string += ' - '
+            elif len(w_) == 1 and w_ not in ALPHABET:
                 sentence_string += w_
             else:
                 sentence_string += ' %s' % w_
 
         return sentence_string.strip()
-
-# replier = Replier()
-#
-# print(replier.get_response("тупая"))
-#
