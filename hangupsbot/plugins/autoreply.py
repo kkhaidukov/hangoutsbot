@@ -9,8 +9,6 @@ from plugins.danilo_replier import Replier
 logger = logging.getLogger(__name__)
 
 replier = Replier()
-replier.init_messages()
-replier.init_ngrams()
 
 
 def _initialise(bot):
