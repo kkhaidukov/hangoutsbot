@@ -164,7 +164,10 @@ class Replier(object):
         i = 0
         while True:
             one, two = sentence[-2:]
-            next_ = random.choice(self.trigrams_dict.get((one, two)))
+            next_list = self.trigrams_dict.get((one, two))
+            if not next_list:
+                break
+            next_ = random.choice(next_list)
             if not next_:
                 break
             elif i > SENTENCE_LENGTH_LIMIT and next_.strip() in ['!', '?']:
@@ -188,7 +191,11 @@ class Replier(object):
                 # logger.info('tuple(sentence[:2]): %s' % tuple(sentence[:2]))
                 suffix = tuple(sentence[:2])
                 logger.info('Suffix: %s' % str(suffix))
-                prefix = random.choice(self.inverted_trigrams.get(suffix, []))
+                prefix_list = self.inverted_trigrams.get(suffix)
+                if not prefix_list:
+                    logger.info('Got an empty prefix list for suffix=%s' % str(suffix))
+                    break
+                prefix = random.choice(prefix_list)
                 logger.info('Got prefix: %s' % prefix)
                 if prefix:
                     if prefix == LINE_START and prefix_length > PREFIX_LENGTH_LIMIT:
