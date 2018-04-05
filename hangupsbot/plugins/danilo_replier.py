@@ -15,9 +15,8 @@ PREFIX_LENGTH_LIMIT = 5
 ALPHABET = 'йцукенгшщзххъёфывапролджэячсмитьбю'
 LINE_START = '~'
 IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif']
-IMAGE_REQUEST_PREFIX = 'данило, картинку:'
 # actually not length, but probability that a conversation will continue
-MAX_DIALOG_LENGTH = 10
+DIALOG_CONTINUATION_PROBABILITY = 0.2
 
 logger = logging.getLogger(__name__)
 rs = RussianStemmer()
@@ -115,7 +114,8 @@ class Replier(object):
             return False
 
         # the probability of a consecutive response will diminish with every other message
-        return random.randrange(10) < MAX_DIALOG_LENGTH - self.current_dialog_length
+        range_ = 10
+        return random.randrange(range_) < range_ * DIALOG_CONTINUATION_PROBABILITY - self.current_dialog_length
 
     def get_response(self, message):
         # determine if it even wants to continue the conversation
@@ -130,8 +130,10 @@ class Replier(object):
             # but if it's not relevant then we'll drop a general generated message
             response = self.generate_message_with_pos_tagging(message) or self.generate_message()
         # sometimes respond with a picture
-        elif will_continue_dialog or random.randrange(10) > 8 or message.startswith(IMAGE_REQUEST_PREFIX):
-            response = self.get_image_url_response(message.replace(IMAGE_REQUEST_PREFIX, '').strip())
+        elif will_continue_dialog or random.randrange(10) > 8 or (
+                'данило' in message.lower() and 'картинку' in message.lower()):
+            message_ = message.lower().replace('данило', '').replace('картинку', '').strip()
+            response = self.get_image_url_response(message_)
         elif will_continue_dialog or 'данило' in message.lower():
             if random.choice([0, 1]):
                 response = self.generate_message()
