@@ -4,6 +4,7 @@ import logging
 import random
 from urllib.parse import quote_plus
 
+import itertools
 import nltk
 from nltk.stem.snowball import RussianStemmer
 from nltk import pos_tag, word_tokenize
@@ -15,7 +16,6 @@ PREFIX_LENGTH_LIMIT = 5
 ALPHABET = 'йцукенгшщзххъёфывапролджэячсмитьбю'
 LINE_START = '~'
 IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif']
-# actually not length, but probability that a conversation will continue
 DIALOG_CONTINUATION_PROBABILITY = 0.2
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,9 @@ rs = RussianStemmer()
 
 class Replier(object):
     def __init__(self):
+        # dict of {word: [list of messages with this word]}
         self.danilo_messages = {}
+        # dict of {(one, two): [list of threes]}
         self.trigrams_dict = {}
         # {stem: (LINE_START, full_word),}
         self.initials = {}
@@ -33,7 +35,8 @@ class Replier(object):
         self.current_dialog_length = 0
 
         self.init_messages()
-        self.init_ngrams()
+        # self.init_ngrams()
+        self.init_ngrams_no_over_line_trigrams()
         self.init_initials()
         self.init_inverted_trigrams()
 
@@ -50,6 +53,28 @@ class Replier(object):
                     self.danilo_messages.setdefault(key, []).append(l)
         logger.info('len(self.danilo_messages.keys()) = %s' % len(self.danilo_messages.keys()))
 
+    def dot_to_line_start(self, token):
+        if token == '.':
+            return LINE_START
+        else:
+            return token
+
+    def init_ngrams_no_over_line_trigrams(self):
+        logger.info("INIT_NGRAMS_NO_OVER_LINE_TRIGRAMS")
+        self.trigrams = []
+        # raw = ''
+        with open(MESSAGES_FILE) as f:
+            for line in f.readlines():
+                line_ = '%s %s' % (LINE_START, line)
+
+                tokens = nltk.word_tokenize(line_)
+                line_trigrams = list(nltk.trigrams(tokens))
+                self.trigrams += line_trigrams
+                for one, two, three in line_trigrams:
+                    one, two, three = map(self.dot_to_line_start, (one, two, three))
+                    self.trigrams_dict.setdefault((one, two), []).append(three)
+        logger.info('len(self.trigrams_dict.keys()) = %s' % len(self.trigrams_dict.keys()))
+
     def init_ngrams(self):
         logger.info("INIT_NGRAMS")
         raw = ''
@@ -59,8 +84,9 @@ class Replier(object):
 
         tokens = nltk.word_tokenize(raw)
         self.trigrams = list(nltk.trigrams(tokens))
-        for tr in self.trigrams:
-            self.trigrams_dict.setdefault((tr[0], tr[1]), []).append(tr[2])
+        for one, two, three in self.trigrams:
+            one, two, three = map(self.dot_to_line_start, (one, two, three))
+            self.trigrams_dict.setdefault((one, two), []).append(three)
         logger.info('len(self.trigrams_dict.keys()) = %s' % len(self.trigrams_dict.keys()))
 
     def init_initials(self):
@@ -138,7 +164,7 @@ class Replier(object):
             if random.choice([0, 1]):
                 response = self.generate_message()
             else:
-                response = self.generate_message_with_pos_tagging(message)
+                response = self.generate_message_with_pos_tagging(message) or self.generate_message()
         if response:
             # the probability of another response should decrease with every message added
             self.current_dialog_length += 1
@@ -154,6 +180,54 @@ class Replier(object):
         d.appendleft(prefix)
         return list(d)
 
+    def sentence_append(self, i, sentence):
+        one, two = sentence[-2:]
+        next_list = self.trigrams_dict.get((one, two))
+        if not next_list:
+            return None
+        next_ = random.choice(next_list)
+        if not next_:
+            return None
+        elif i > SENTENCE_LENGTH_LIMIT and next_.strip() in ['!', '?']:
+            sentence.append(next_)
+            return None
+        elif i > SENTENCE_LENGTH_LIMIT and next_.strip() in ['.', ',']:
+            return None
+        elif next_:
+            sentence.append(next_)
+            return i + 1
+        else:
+            return None
+
+    def sentence_prepend(self, sentence):
+        logger.info('Prepending the sentence, sentence so far: %s' % sentence)
+        prefix_length = 0
+        debug_prefix_deque = deque()
+        while True:
+            logger.info('sentence[:2]: %s' % sentence[:2])
+            # logger.info('tuple(sentence[:2]): %s' % tuple(sentence[:2]))
+            suffix = tuple(sentence[:2])
+            logger.info('Suffix: %s' % str(suffix))
+            prefix_list = self.inverted_trigrams.get(suffix)
+            if not prefix_list:
+                logger.info('Got an empty prefix list for suffix=%s' % str(suffix))
+                break
+            prefix = random.choice(prefix_list)
+            logger.info('Got prefix: %s' % prefix)
+            if prefix:
+                if prefix == LINE_START and prefix_length > PREFIX_LENGTH_LIMIT:
+                    sentence = self.sentence_appendleft(sentence, prefix)
+                    debug_prefix_deque.appendleft(prefix)
+                    break
+                else:
+                    sentence = self.sentence_appendleft(sentence, prefix)
+                    debug_prefix_deque.appendleft(prefix)
+                    prefix_length += 1
+            else:
+                break
+        logger.info('Prepended prefix: %s' % debug_prefix_deque)
+        return sentence
+
     def generate_message(self, initial=None):
         logger.info('Using generate_message to create a response, initial = %s' % str(initial))
         if initial:
@@ -165,53 +239,18 @@ class Replier(object):
             sentence = list(random.choice(list(self.initials.values())))
         i = 0
         while True:
-            one, two = sentence[-2:]
-            next_list = self.trigrams_dict.get((one, two))
-            if not next_list:
+            i = self.sentence_append(i, sentence)
+            if not i:
                 break
-            next_ = random.choice(next_list)
-            if not next_:
-                break
-            elif i > SENTENCE_LENGTH_LIMIT and next_.strip() in ['!', '?']:
-                sentence.append(next_)
-                i += 1
-                break
-            elif i > SENTENCE_LENGTH_LIMIT and next_.strip() in ['.', ',']:
-                break
-            elif next_:
-                sentence.append(next_)
-                i += 1
-            else:
-                break
+
         # flip a coin to prepend
         if random.randrange(2):
-            logger.info('Prepending the sentence, sentence so far: %s' % sentence)
-            prefix_length = 0
-            debug_prefix_deque = deque()
-            while True:
-                logger.info('sentence[:2]: %s' % sentence[:2])
-                # logger.info('tuple(sentence[:2]): %s' % tuple(sentence[:2]))
-                suffix = tuple(sentence[:2])
-                logger.info('Suffix: %s' % str(suffix))
-                prefix_list = self.inverted_trigrams.get(suffix)
-                if not prefix_list:
-                    logger.info('Got an empty prefix list for suffix=%s' % str(suffix))
-                    break
-                prefix = random.choice(prefix_list)
-                logger.info('Got prefix: %s' % prefix)
-                if prefix:
-                    if prefix == LINE_START and prefix_length > PREFIX_LENGTH_LIMIT:
-                        sentence = self.sentence_appendleft(sentence, prefix)
-                        debug_prefix_deque.appendleft(prefix)
-                        break
-                    else:
-                        sentence = self.sentence_appendleft(sentence, prefix)
-                        debug_prefix_deque.appendleft(prefix)
-                        prefix_length += 1
-                else:
-                    break
-            logger.info('Prepended prefix: %s' % debug_prefix_deque)
+            # not an in-place change!
+            sentence = self.sentence_prepend(sentence)
 
+        return self.join_sentence(sentence)
+
+    def join_sentence(self, sentence):
         sentence_string = ''
         for w in sentence:
             w_ = w.strip().lower()
@@ -249,6 +288,38 @@ class Replier(object):
             logger.info("Could not get S, V from message '%s'" % message)
         logger.info("Could not generate anything from message '%s'" % message)
 
+    def generate_kind_of_relevant_message(self, message):
+        logger.info('Using generate_kind_of_relevant_message to respond to "%s"' % message)
+        # words = [w.strip() for w in message.split()]
+        tagged = pos_tag(word_tokenize(message), lang='rus')
+        # find meaningful words
+        meaningful_words = []
+        for word, tag in tagged:
+            if tag in ['S', 'V', 'A=m', 'A=f', 'A=n', 'A-PRO=m', 'A-PRO=f', 'A-PRO=n', 'S-PRO']:
+                meaningful_words.append(word)
+        if meaningful_words and len(meaningful_words) > 1:
+            # generate all pairs
+            permutations_ = list(itertools.permutations(meaningful_words, 2))
+            random.shuffle(permutations_)
+            for pair in permutations_:
+                # go through the pairs and try to find a corresponding trigram
+                trigram = self.trigrams_dict.get(pair)
+                if trigram:
+                    # append
+                    sentence = list(pair)
+                    i = 0
+                    while True:
+                        i = self.sentence_append(i, sentence)
+                        if not i:
+                            break
+                    # prepend
+                    sentence = self.sentence_prepend(sentence)
+                    return self.join_sentence(sentence)
+            else:
+                logger.info("Could not find a trigram from meaningful_words pairs.")
+        else:
+            logger.info("No or not enough 'meaningful' words found")
+
     def get_image_url_response(self, message):
         logger.info('Using get_image_url_response to respond to "%s"' % message)
         tagged = pos_tag(word_tokenize(message), lang='rus')
@@ -276,3 +347,8 @@ class Replier(object):
                 s_v.pop()
         else:
             logger.info('Could not get anything with given message')
+
+
+# replier = Replier()
+# replier.generate_kind_of_relevant_message('или как вариант на домашний этой тетке, если ты его знаешь, кнешна')
+# replier.generate_haiku()
