@@ -154,7 +154,7 @@ class Replier(object):
         # fairly rarely try to be relevant
         elif will_continue_dialog or random.randrange(10) > 8:
             # but if it's not relevant then we'll drop a general generated message
-            response = self.generate_message_with_pos_tagging(message) or self.generate_message()
+            response = self.generate_kind_of_relevant_message(message) or self.generate_message_with_pos_tagging(message) or self.generate_message()
         # sometimes respond with a picture
         elif will_continue_dialog or random.randrange(10) > 8 or (
                 'данило' in message.lower() and 'картинку' in message.lower()):
@@ -164,7 +164,7 @@ class Replier(object):
             if random.choice([0, 1]):
                 response = self.generate_message()
             else:
-                response = self.generate_message_with_pos_tagging(message) or self.generate_message()
+                response = self.generate_kind_of_relevant_message(message) or self.generate_message_with_pos_tagging(message) or self.generate_message()
         if response:
             # the probability of another response should decrease with every message added
             self.current_dialog_length += 1
@@ -303,8 +303,7 @@ class Replier(object):
             random.shuffle(permutations_)
             for pair in permutations_:
                 # go through the pairs and try to find a corresponding trigram
-                trigram = self.trigrams_dict.get(pair)
-                if trigram:
+                if pair in self.trigrams_dict:
                     # append
                     sentence = list(pair)
                     i = 0
@@ -351,4 +350,3 @@ class Replier(object):
 
 # replier = Replier()
 # replier.generate_kind_of_relevant_message('или как вариант на домашний этой тетке, если ты его знаешь, кнешна')
-# replier.generate_haiku()
