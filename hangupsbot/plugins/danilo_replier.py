@@ -10,6 +10,10 @@ from nltk.stem.snowball import RussianStemmer
 from nltk import pos_tag, word_tokenize
 import requests
 
+import locale
+# this is necessary to run on raspberry
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+
 MESSAGES_FILE = '%s/danilo_messages.txt' % os.path.dirname(os.path.realpath(__file__))
 SENTENCE_LENGTH_LIMIT = 10
 PREFIX_LENGTH_LIMIT = 5
@@ -341,6 +345,7 @@ class Replier(object):
                             return media_url
                     else:
                         logger.warning('None of the URLs in the search results contained a proper image')
+                        s_v.pop()
             else:
                 logger.info('No results, will retry with a smaller query')
                 s_v.pop()
