@@ -153,10 +153,13 @@ class Replier(object):
         logger.info('will_continue_dialog = %s' % will_continue_dialog)
 
         response = None
-        if self._has_image_link(message):
-            response = self.get_response_to_an_image(message)
+        # meh
+        # if self._has_image_link(message):
+        # TODO: do an image search and try to be relevant
+        #     response = self.get_response_to_an_image(message)
+
         # fairly rarely try to be relevant
-        elif will_continue_dialog or random.randrange(10) > 8:
+        if will_continue_dialog or random.randrange(10) > 8:
             # but if it's not relevant then we'll drop a general generated message
             response = self.generate_kind_of_relevant_message(message) or self.generate_message_with_pos_tagging(message) or self.generate_message()
         # sometimes respond with a picture
